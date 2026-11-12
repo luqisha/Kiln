@@ -1,0 +1,12 @@
+# Replace @OWNER with real GitHub users or teams before enabling "Require review from Code Owners".
+*                   @OWNER
+
+# Security-critical paths need a second reviewer (ENGINEERING.md §5).
+/app/github/        @OWNER
+/app/auth.py        @OWNER
+/app/sandbox/       @OWNER
+/app/llm/           @OWNER
+/app/log.py         @OWNER
+/docker/            @OWNER
+/alembic/versions/  @OWNER
+/.github/           @OWNER

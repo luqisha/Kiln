@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "1"  # fail if uv.lock is out of date with pyproject.toml
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy app tests
+      - run: uv run lint-imports
+
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Unit tests with coverage gate
+        run: uv run pytest -m "not docker and not db" -n auto --cov --cov-report=term-missing
+      - name: 100% branch coverage on security-critical modules
+        run: uv run coverage report --include="app/log.py" --fail-under=100
+      # Add jobs as their milestones land (ENGINEERING.md §6):
+      #   db          (PLAN.md Step 1): pytest -m db + alembic upgrade/check/downgrade round-trip
+      #   integration (PLAN.md Step 2): pytest -m docker
+      #   images      (PLAN.md Step 1): docker build + trivy
+
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # gitleaks scans full history
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Secret scan
+        run: uv run pre-commit run gitleaks --all-files
+      - name: Dependency vulnerability audit
+        run: |
+          uv export --no-emit-project --format requirements.txt -o "$RUNNER_TEMP/requirements.txt"
+          uv run pip-audit --strict --disable-pip --no-deps -r "$RUNNER_TEMP/requirements.txt"
